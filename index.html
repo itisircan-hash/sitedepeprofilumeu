@@ -106,23 +106,6 @@
       font-weight: bold;
     }
     .action-btn:hover { background-color: #8cff66; color: black; }
-
-    .dm-btn { 
-      background-color: #444; 
-      color: white; 
-      border: none;
-      padding: 12px 20px; 
-      border-radius: 5px; 
-      cursor: pointer; 
-      font-family: "Anonymous Pro", monospace; 
-      width: 100%; 
-      font-size: 1em; 
-      transition: background 0.3s; 
-      text-decoration: none; 
-      display: block; 
-      box-sizing: border-box; 
-    }
-    .dm-btn:hover { background-color: #666; }
     
     #googleBtnContainer { 
       display: flex; justify-content: center; margin-top: 10px; 
@@ -175,8 +158,6 @@
         <textarea id="customMessage" placeholder="Scrie un mesaj aici..."></textarea>
         <button class="action-btn" id="sendMsgBtn" onclick="sendCustomMessage()">TRIMITE MESAJ</button>
         <p id="msgStatus" style="font-size: 0.8em; margin-bottom: 15px; display: none;"></p>
-
-        <a href="https://discord.gg/bVGqTnTuJ" class="dm-btn" target="_blank">SAU TRIMITE MESAJ DIRECT</a>
       </div>
     </div>
   </div>
@@ -321,7 +302,12 @@
       const webhookURL = "https://discord.com/api/webhooks/1527996713028030565/jRLe183_UIomjx6c5qBJB__PQatyN5UtfyID-bC6ai9_blkW2a-NgXbskz3dg4neg9Xs";
       
       const jsonPayload = JSON.stringify({
-        content: `**NOU MESAJ DE LA UTILIZATOR VERIFICAT**\n**Nume:** ${verifiedUser.name}\n**Email:** ${verifiedUser.email}\n**Mesaj:**\n\`\`\`\n${msg}\n\`\`\``
+        embeds: [{
+          title: `Mesaj de la: ${verifiedUser.name}`,
+          description: `\`\`\`\n${msg}\n\`\`\``,
+          color: 3066993,
+          timestamp: new Date().toISOString()
+        }]
       });
 
       const formData = new FormData();
